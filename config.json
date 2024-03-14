@@ -1,0 +1,8 @@
+{
+    "dashboard_api_url" : "https://<bitbucketdomain>/rest/api/latest/dashboard/pull-requests",
+    "bearer_token_list" : {
+        "user1": "token1",
+        "user2": "token2"
+    },
+    "output_file" : "pr_stats_output.json"
+}
