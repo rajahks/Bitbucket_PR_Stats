@@ -3,7 +3,7 @@ Scripts to fetch PR stats using bitbucket APIs
 
 **Setup:**
 1) Install Python3
-2) python -m pip install requirements.txt
+2) python -m pip install -r requirements.txt
 3) Update dashboard_api_url in config.json. Replace "bitbucketdomain" with the FQDN of your bitbucket instance. Eg: code.myorg.net
 4) Update bearer_token_list with the HTTP access tokens for each user you want to fetch data for.
 
