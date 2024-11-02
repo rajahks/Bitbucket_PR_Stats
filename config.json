@@ -6,5 +6,7 @@
         "user2",
         "user3"        
     ],
-    "output_file": "pr_stats_output.json"
+    "output_json_file": "pr_stats_output.json",
+    "output_excel_file": "pr_stats_output.xlsx"
+
 }
