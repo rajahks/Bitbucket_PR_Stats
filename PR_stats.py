@@ -156,14 +156,14 @@ if __name__ == "__main__":
         raise ValueError("bearer_token is missing or empty in the config.json file")
     
     username_list = config_data.get('username_list', [])
-    output_file = config_data.get('output_file', "pr_stats_output.json")
+    output_json_file = config_data.get('output_json_file', "pr_stats_output.json")
 
     print(f"Fetching pull request stats for the period {start_date_str} to {end_date_str}")
 
     stats = fetch_pull_request_stats(bitbucket_server_fqdn, bearer_token, username_list, start_date_str, end_date_str)
 
     # Write the stats in json format to a file    
-    with open(output_file, 'w') as file:
+    with open(output_json_file, 'w') as file:
         json.dump(stats, file, indent=2)
 
     
