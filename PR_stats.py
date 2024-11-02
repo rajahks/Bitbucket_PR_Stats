@@ -1,3 +1,4 @@
+import time
 import requests
 import json
 import requests
@@ -5,16 +6,21 @@ from datetime import datetime
 import pytz
 import sys
 from datetime import timedelta
+import pandas as pd
 
-def fetch_from_bitbucket(base_url, bearer_token, params=None):
+def fetch_from_bitbucket(base_url, bearer_token, params=None, retries=3):
     headers = {'Authorization': f'Bearer {bearer_token}'}
-    response = requests.get(base_url, headers=headers, params=params)
-    if response.status_code == 200:
-        pull_requests = json.loads(response.text)
-        return pull_requests
-    else:
-        print(f"Failed to fetch from bitbucket. Status code: {response.status_code}")
-        return None
+    for attempt in range(retries):
+        try:
+            with requests.Session() as session:
+                response = session.get(base_url, headers=headers, params=params)
+                response.raise_for_status()
+                return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Attempt {attempt + 1} failed: {e}")
+            time.sleep(1)
+    print(f"Failed to fetch from bitbucket after {retries} attempts.")
+    return None
 
 def fetch_pull_requests_for_a_user(bitbucket_server_fqdn, bearer_token, params=None):
     """ Fetches pull requests for a user using the Dashboard bitbucket api.
@@ -61,7 +67,8 @@ def fetch_pull_request_stats(bitbucket_server_fqdn, bearer_token, username_list,
     stats = {}
     stats['start_date'] = start_date_str
     stats['end_date'] = end_date_str
-    stats['pr_count'] = 0
+    stats['total_pr_count'] = 0
+    stats['total_pr_list'] = []
 
     for username in username_list:
         print(f"Fetching pull requests for {username}")
@@ -83,6 +90,7 @@ def fetch_pull_request_stats(bitbucket_server_fqdn, bearer_token, username_list,
             endDateTimestampMilliSec = int(endDateObject.timestamp()*1000)
 
             stats_for_dev = {}
+            stats_for_dev['username'] = username
             stats_for_dev['pr_count'] = 0
             stats_for_dev['pr_list'] = []
 
@@ -99,11 +107,26 @@ def fetch_pull_request_stats(bitbucket_server_fqdn, bearer_token, username_list,
                     pr_info['dest_branch'] = pr['toRef']['displayId']
                     pr_info['repo'] = pr['toRef']['repository']['name']
                     pr_info['pr_link'] = pr['links']['self'][0]['href']
+                    
+                    # fetch the JIRAs corresponding to this PR
+                    pr_id = pr['id']
+                    pr_project_key = pr['toRef']['repository']['project']['key']
+                    pr_repo_slug = pr['toRef']['repository']['slug']
+                    
+                    jira_keys_for_pr_api_url = f"http://{bitbucket_server_fqdn}/rest/jira/latest/projects/{pr_project_key}/repos/{pr_repo_slug}/pull-requests/{pr_id}/issues"
+                    
+                    # fetch the JIRA keys for the PR
+                    jira_issues_for_pr = fetch_from_bitbucket(jira_keys_for_pr_api_url, bearer_token)
+                    pr_jira_urls = [jira_key['url'] for jira_key in jira_issues_for_pr]
+                    # Update the pr_info with the JIRA keys pertaining to this PR
+                    pr_info['jira'] = pr_jira_urls       
+                    
                     stats_for_dev['pr_list'].append(pr_info)
                     #print(f"Title: {pr['title']}, Author: {pr['author']['user']['name']}  State: {pr['state']}, Created on: {pr['createdDate']}")
             
-            stats['pr_count'] += stats_for_dev['pr_count']
-            stats[username] = stats_for_dev
+            stats['total_pr_count'] += stats_for_dev['pr_count']
+            stats['total_pr_list'].append(stats_for_dev)
+
     return stats
 
 def read_config_file():
@@ -138,8 +161,34 @@ if __name__ == "__main__":
     print(f"Fetching pull request stats for the period {start_date_str} to {end_date_str}")
 
     stats = fetch_pull_request_stats(bitbucket_server_fqdn, bearer_token, username_list, start_date_str, end_date_str)
+
+    # Write the stats in json format to a file    
     with open(output_file, 'w') as file:
         json.dump(stats, file, indent=2)
 
+    
+    # Write the stats to an excel file
+    # Collect the data in a list
+    data = []
+    for user_stats in stats['total_pr_list']:
+        for pr in user_stats['pr_list']:
+            data.append({
+                'Author': pr['author'],
+                'Repository': pr['repo'],
+                'PR Title': pr['title'],
+                'State': pr['state'],
+                'Created Date': pr['created_date'],
+                'Destination Branch': pr['dest_branch'],
+                'PR Link': pr['pr_link'],
+                'JIRA Links': ', '.join(pr['jira'])
+            })
+
+    # Convert the list of data to a DataFrame
+    df = pd.DataFrame(data, columns=['Author', 'Repository', 'PR Title', 'State', 'Created Date', 'Destination Branch', 'PR Link', 'JIRA Links'])
+
+    # Write the DataFrame to an Excel file
+    output_excel_file = config_data.get('output_excel_file', "pr_stats_output.xlsx")
+    df.to_excel(output_excel_file, index=False)
+    
 
 
