@@ -16,18 +16,22 @@ def fetch_from_bitbucket(base_url, bearer_token, params=None):
         print(f"Failed to fetch from bitbucket. Status code: {response.status_code}")
         return None
 
-def fetch_pull_requests_for_a_user(dashboard_api_url, bearer_token, params=None):
-    """Fetches pull requests for a user using the Dashboard bitbucket api.
+def fetch_pull_requests_for_a_user(bitbucket_server_fqdn, bearer_token, params=None):
+    """ Fetches pull requests for a user using the Dashboard bitbucket api.
+        The dashboard API is constructed based on the server fqdn
        Ref: https://developer.atlassian.com/server/bitbucket/rest/v818/api-group-dashboard/#api-api-latest-dashboard-pull-requests-get
 
     Args:
-        dashboard_api_url (string): The URL of the Bitbucket API.
+        bitbucket_server_fqdn (string): The fqdn of the Bitbucket server. Eg: code.myorg.com
         bearer_token (string): The token to authenticate with bitbucket.
         params (json, optional): params which have to be passed to the bitbucket api. Defaults to None.
 
     Returns:
         json: Contains the pull requests for the user.
     """
+    
+    dashboard_api_url = f"https://{bitbucket_server_fqdn}/rest/api/latest/dashboard/pull-requests",
+
     # As of now just calls the fetch_from_bitbucket method. But can be used to add more logic in future.
     return fetch_from_bitbucket(dashboard_api_url, bearer_token, params)
 
@@ -52,22 +56,24 @@ def convert_timestamp_to_date(timestamp_millis, timezone='Asia/Kolkata'):
     return date_str
 
 
-def fetch_pull_request_stats(dashboard_api_url, bearer_token_list, start_date_str, end_date_str):
+def fetch_pull_request_stats(bitbucket_server_fqdn, bearer_token, username_list, start_date_str, end_date_str):
     # initialize stats
     stats = {}
     stats['start_date'] = start_date_str
     stats['end_date'] = end_date_str
     stats['pr_count'] = 0
 
-    for username, bearer_token in bearer_token_list.items():
+    for username in username_list:
         print(f"Fetching pull requests for {username}")
         # setup the query params for the API
-        # Ideally we should paginate and fetch all the pull requests. But for now, 
-        # we are fetching only the first 100 pull requests for the user since we want weekly data
-        # and a dev will likely not have more than 100 PRs in a week.
-        params = {'role':'AUTHOR','limit':100, 'order':'NEWEST' }
-        pull_requests = fetch_pull_requests_for_a_user(dashboard_api_url, bearer_token, params)
+        #TODO: Ideally we should paginate and fetch all the pull requests. But for now, 
+        # we are fetching only the first 1000 pull requests for the user since we want yearly data
+        # and a dev will likely not have more than 1000 PRs in a year.
+        params = {'role':'AUTHOR','user':username, 'limit':1000, 'order':'NEWEST' }
+        pull_requests = fetch_pull_requests_for_a_user(bitbucket_server_fqdn, bearer_token, params)
+        
         if pull_requests: 
+            
             # convert the start and end date to timestamp in milliseconds as that
             # is the format in which the createdDate is returned by the Bitbucket API
             startDateObject = datetime.strptime(start_date_str, "%Y-%m-%d")
@@ -75,6 +81,7 @@ def fetch_pull_request_stats(dashboard_api_url, bearer_token_list, start_date_st
             endDateObject = datetime.strptime(end_date_str, "%Y-%m-%d") + timedelta(days=1) - timedelta(seconds=1)
             startDateTimestampMilliSec = int(startDateObject.timestamp()*1000)
             endDateTimestampMilliSec = int(endDateObject.timestamp()*1000)
+
             stats_for_dev = {}
             stats_for_dev['pr_count'] = 0
             stats_for_dev['pr_list'] = []
@@ -116,13 +123,21 @@ if __name__ == "__main__":
     end_date_str = sys.argv[2]
 
     config_data = read_config_file()
-    bearer_token_list = config_data.get('bearer_token_list', [])
-    dashboard_api_url = config_data.get('dashboard_api_url', "")
+    
+    bitbucket_server_fqdn = config_data.get('bitbucket_server_fqdn')
+    if not bitbucket_server_fqdn:
+        raise ValueError("bitbucket_server_fqdn is missing or empty in the config.json file")
+
+    bearer_token = config_data.get('bearer_token')
+    if not bearer_token:
+        raise ValueError("bearer_token is missing or empty in the config.json file")
+    
+    username_list = config_data.get('username_list', [])
     output_file = config_data.get('output_file', "pr_stats_output.json")
 
     print(f"Fetching pull request stats for the period {start_date_str} to {end_date_str}")
 
-    stats = fetch_pull_request_stats(dashboard_api_url, bearer_token_list, start_date_str, end_date_str)
+    stats = fetch_pull_request_stats(bitbucket_server_fqdn, bearer_token, username_list, start_date_str, end_date_str)
     with open(output_file, 'w') as file:
         json.dump(stats, file, indent=2)
 
