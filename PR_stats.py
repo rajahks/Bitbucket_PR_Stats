@@ -30,7 +30,7 @@ def fetch_pull_requests_for_a_user(bitbucket_server_fqdn, bearer_token, params=N
         json: Contains the pull requests for the user.
     """
     
-    dashboard_api_url = f"https://{bitbucket_server_fqdn}/rest/api/latest/dashboard/pull-requests",
+    dashboard_api_url = f"https://{bitbucket_server_fqdn}/rest/api/latest/dashboard/pull-requests"
 
     # As of now just calls the fetch_from_bitbucket method. But can be used to add more logic in future.
     return fetch_from_bitbucket(dashboard_api_url, bearer_token, params)
