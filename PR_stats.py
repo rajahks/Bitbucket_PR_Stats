@@ -8,18 +8,20 @@ import sys
 from datetime import timedelta
 import pandas as pd
 
-def fetch_from_bitbucket(base_url, bearer_token, params=None, retries=3):
+# Create a session object to reuse the connection across multiple requests
+session = requests.Session()
+
+def fetch_from_bitbucket(session, base_url, bearer_token, params=None, retries=3, delay=5):
     headers = {'Authorization': f'Bearer {bearer_token}'}
     for attempt in range(retries):
         try:
-            with requests.Session() as session:
-                response = session.get(base_url, headers=headers, params=params)
-                response.raise_for_status()
-                return response.json()
+            response = session.get(base_url, headers=headers, params=params)
+            response.raise_for_status()
+            return response.json()
         except requests.exceptions.RequestException as e:
-            print(f"Attempt {attempt + 1} failed: {e}")
-            time.sleep(1)
-    print(f"Failed to fetch from bitbucket after {retries} attempts.")
+            print(f"Attempt {attempt + 1} failed. Retrying after {delay}secs: {e}")
+            time.sleep(delay)
+    print(f"Error: Failed to fetch from bitbucket after {retries} attempts.")
     return None
 
 def fetch_pull_requests_for_a_user(bitbucket_server_fqdn, bearer_token, params=None):
@@ -39,7 +41,7 @@ def fetch_pull_requests_for_a_user(bitbucket_server_fqdn, bearer_token, params=N
     dashboard_api_url = f"https://{bitbucket_server_fqdn}/rest/api/latest/dashboard/pull-requests"
 
     # As of now just calls the fetch_from_bitbucket method. But can be used to add more logic in future.
-    return fetch_from_bitbucket(dashboard_api_url, bearer_token, params)
+    return fetch_from_bitbucket(session, dashboard_api_url, bearer_token, params)
 
 def convert_timestamp_to_date(timestamp_millis, timezone='Asia/Kolkata'):
     """Converts a timestamp to a date string in the timezone specified.
@@ -80,7 +82,6 @@ def fetch_pull_request_stats(bitbucket_server_fqdn, bearer_token, username_list,
         pull_requests = fetch_pull_requests_for_a_user(bitbucket_server_fqdn, bearer_token, params)
         
         if pull_requests: 
-            
             # convert the start and end date to timestamp in milliseconds as that
             # is the format in which the createdDate is returned by the Bitbucket API
             startDateObject = datetime.strptime(start_date_str, "%Y-%m-%d")
@@ -102,6 +103,7 @@ def fetch_pull_request_stats(bitbucket_server_fqdn, bearer_token, username_list,
                     pr_info = {}
                     pr_info['title'] = pr['title']
                     pr_info['author'] = pr['author']['user']['name']
+                    pr_info['author_full_name'] = pr['author']['user']['displayName']
                     pr_info['state'] = pr['state']
                     pr_info['created_date'] = convert_timestamp_to_date(pr['createdDate'])
                     pr_info['dest_branch'] = pr['toRef']['displayId']
@@ -116,7 +118,7 @@ def fetch_pull_request_stats(bitbucket_server_fqdn, bearer_token, username_list,
                     jira_keys_for_pr_api_url = f"http://{bitbucket_server_fqdn}/rest/jira/latest/projects/{pr_project_key}/repos/{pr_repo_slug}/pull-requests/{pr_id}/issues"
                     
                     # fetch the JIRA keys for the PR
-                    jira_issues_for_pr = fetch_from_bitbucket(jira_keys_for_pr_api_url, bearer_token)
+                    jira_issues_for_pr = fetch_from_bitbucket(session, jira_keys_for_pr_api_url, bearer_token)
                     pr_jira_urls = [jira_key['url'] for jira_key in jira_issues_for_pr]
                     # Update the pr_info with the JIRA keys pertaining to this PR
                     pr_info['jira'] = pr_jira_urls       
@@ -173,7 +175,8 @@ if __name__ == "__main__":
     for user_stats in stats['total_pr_list']:
         for pr in user_stats['pr_list']:
             data.append({
-                'Author': pr['author'],
+                #'Author': pr['author'],
+                'Author Full Name': pr['author_full_name'],
                 'Repository': pr['repo'],
                 'PR Title': pr['title'],
                 'State': pr['state'],
@@ -184,11 +187,22 @@ if __name__ == "__main__":
             })
 
     # Convert the list of data to a DataFrame
-    df = pd.DataFrame(data, columns=['Author', 'Repository', 'PR Title', 'State', 'Created Date', 'Destination Branch', 'PR Link', 'JIRA Links'])
+    df = pd.DataFrame(data, columns=[
+        # 'Author', 
+        'Author Full Name', 
+        'Repository', 
+        'PR Title', 
+        'State', 
+        'Created Date', 
+        'Destination Branch', 
+        'PR Link', 
+        'JIRA Links'
+    ])
 
     # Write the DataFrame to an Excel file
     output_excel_file = config_data.get('output_excel_file', "pr_stats_output.xlsx")
     df.to_excel(output_excel_file, index=False)
     
-
+    # Close the session when done
+    session.close()
 
