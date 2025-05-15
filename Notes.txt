@@ -24,3 +24,16 @@ Get commits
 
     https://developer.atlassian.com/server/bitbucket/rest/v818/api-group-repository/#api-api-latest-projects-projectkey-repos-repositoryslug-commits-get
 
+
+Get Stats similar to Git diff directly
+    https://developer.atlassian.com/server/bitbucket/rest/v906/api-group-repository/#api-api-latest-projects-projectkey-repos-repositoryslug-commits-commitid-diff-stats-summary-path-get
+    https://jira.atlassian.com/browse/BSERV-19544
+    This is mostly available only from 9.1.0 version.
+
+Get diff between revisions
+    https://developer.atlassian.com/server/bitbucket/rest/v906/api-group-repository/#api-api-latest-projects-projectkey-repos-repositoryslug-commits-commitid-diff-path-get
+    https://{bitbucket_server_fqdn}/rest/api/latest/projects/{projectkey}/repos/{repositoryslug}/commits/{commitID}/diff
+    Gets a diff of the commit and sends back a json response of the hunks.
+    The hunks have segments which have types.
+    CONTEXT, ADDED and REMOVED. This can be to used to quickly
+    used to identify how many lines were added and removed.
